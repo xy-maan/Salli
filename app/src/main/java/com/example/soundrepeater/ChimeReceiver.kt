@@ -15,8 +15,9 @@ class ChimeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!Scheduler.isEnabled(context)) return
 
-        // Schedule the next one first, so timing never drifts.
-        Scheduler.scheduleNext(context)
+        // Schedule the next one first, using the interval stored in this very alarm.
+        val minutes = intent.getIntExtra(Scheduler.EXTRA_MINUTES, Scheduler.minutes(context))
+        Scheduler.scheduleAfter(context, minutes, intent.getLongExtra(Scheduler.EXTRA_AT, 0L))
 
         val app = context.applicationContext
         val resId = app.resources.getIdentifier("chime", "raw", app.packageName)
@@ -26,8 +27,8 @@ class ChimeReceiver : BroadcastReceiver() {
         val handler = Handler(Looper.getMainLooper())
         val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(attrs).build()

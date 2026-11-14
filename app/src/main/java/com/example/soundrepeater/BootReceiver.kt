@@ -6,6 +6,6 @@ import android.content.Intent
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (Scheduler.isEnabled(context)) Scheduler.scheduleNext(context)
+        if (Scheduler.isEnabled(context)) Scheduler.resume(context)
     }
 }
