@@ -53,7 +53,7 @@ No internet, storage, notification, or location permissions are used.
 ## Tech
 
 - Kotlin, plain Android SDK (no AndroidX, no dependencies)
-- Min SDK 28 (Android 9), target SDK 34
+- Min SDK 26 (Android 8.0), target SDK 34
 - Adaptive vector icon, with no bitmap assets
 
 ## Project structure

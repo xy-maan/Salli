@@ -85,7 +85,7 @@ class MainActivity : Activity() {
 
         // Start / Stop
         toggle = Button(this).apply {
-            isAllCaps = false; textSize = 18f; stateListAnimator = null
+            setAllCaps(false); textSize = 18f; stateListAnimator = null
             setOnClickListener { onToggle() }
         }
         root.addView(toggle, LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(28) })
