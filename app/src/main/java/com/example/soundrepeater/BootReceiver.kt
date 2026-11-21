@@ -6,6 +6,9 @@ import android.content.Intent
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (Scheduler.isEnabled(context)) Scheduler.resume(context)
+        val app = context.applicationContext
+        val enabled = Scheduler.isEnabled(app)
+        SalliLog.log(app, "BOOT", "received ${intent.action} enabled=$enabled")
+        if (enabled) Scheduler.resume(app)
     }
 }

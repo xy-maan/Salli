@@ -10,18 +10,34 @@ import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 
 class ChimeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (!Scheduler.isEnabled(context)) return
+        val t0 = SystemClock.elapsedRealtime()
+        val app = context.applicationContext
+
+        if (!Scheduler.isEnabled(app)) {
+            SalliLog.log(app, "ALARM", "fired but reminder is OFF, ignoring")
+            return
+        }
+
+        val planned = intent.getLongExtra(Scheduler.EXTRA_AT, 0L)
+        val minutes = intent.getIntExtra(Scheduler.EXTRA_MINUTES, Scheduler.minutes(app))
+        val late = if (planned > 0) System.currentTimeMillis() - planned else -1L
+        SalliLog.log(
+            app, "ALARM",
+            "FIRED planned=${SalliLog.time(planned)} late=${late}ms interval=${minutes}min ${SalliLog.state(app)}"
+        )
 
         // Schedule the next one first, using the interval stored in this very alarm.
-        val minutes = intent.getIntExtra(Scheduler.EXTRA_MINUTES, Scheduler.minutes(context))
-        Scheduler.scheduleAfter(context, minutes, intent.getLongExtra(Scheduler.EXTRA_AT, 0L))
+        Scheduler.scheduleAfter(app, minutes, planned)
 
-        val app = context.applicationContext
         val resId = app.resources.getIdentifier("chime", "raw", app.packageName)
-        if (resId == 0) return // sound file missing
+        if (resId == 0) {
+            SalliLog.log(app, "PLAY", "chime resource missing (res/raw/chime.*)")
+            return
+        }
 
         val pending = goAsync()
         val handler = Handler(Looper.getMainLooper())
@@ -35,13 +51,15 @@ class ChimeReceiver : BroadcastReceiver() {
 
         var player: MediaPlayer? = null
         var done = false
-        fun finish() {
+        fun finish(reason: String) {
             if (done) return
             done = true
             handler.removeCallbacksAndMessages(null)
             try { player?.release() } catch (_: Exception) {}
-            audio.abandonAudioFocusRequest(focus)
-            pending.finish() // releases the CPU wake-lock immediately
+            try { audio.abandonAudioFocusRequest(focus) } catch (_: Exception) {}
+            val awake = SystemClock.elapsedRealtime() - t0
+            SalliLog.log(app, "PLAY", "done reason=$reason awake=${awake}ms ${Scheduler.recordAwake(app, awake)}")
+            try { pending.finish() } catch (_: Exception) {} // releases the CPU wake-lock
         }
 
         try {
@@ -52,14 +70,20 @@ class ChimeReceiver : BroadcastReceiver() {
                 mp.setDataSource(it.fileDescriptor, it.startOffset, it.length)
             }
             mp.setWakeMode(app, PowerManager.PARTIAL_WAKE_LOCK)
-            mp.setOnCompletionListener { finish() }
-            mp.setOnErrorListener { _, _, _ -> finish(); true }
+            mp.setOnCompletionListener { finish("completed") }
+            mp.setOnErrorListener { _, what, extra ->
+                SalliLog.log(app, "PLAY", "ERROR what=$what extra=$extra")
+                finish("error")
+                true
+            }
             mp.prepare()
-            audio.requestAudioFocus(focus)
+            val focusResult = audio.requestAudioFocus(focus)
+            SalliLog.log(app, "PLAY", "starting focus=${if (focusResult == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "granted" else "denied($focusResult)"}")
             mp.start()
-            handler.postDelayed({ finish() }, 9000) // safety cutoff
+            handler.postDelayed({ finish("timeout9s") }, 9000) // safety cutoff
         } catch (e: Exception) {
-            finish()
+            SalliLog.log(app, "PLAY", "EXCEPTION ${e.javaClass.simpleName}: ${e.message}")
+            finish("exception")
         }
     }
 }

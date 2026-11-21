@@ -1,6 +1,10 @@
 package com.example.soundrepeater
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -12,6 +16,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
+import java.util.Locale
 
 class MainActivity : Activity() {
     private val navy = 0xFF0B1F4B.toInt()
@@ -24,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var dot: View
     private lateinit var toggle: Button
+    private lateinit var stats: TextView
     private val chipViews = mutableListOf<TextView>()
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -44,6 +50,22 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Test hook for automated tests (only works in debug builds):
+        //   adb shell am start -n <pkg>/.MainActivity --ei debug_start_minutes 1
+        //   adb shell am start -n <pkg>/.MainActivity --ez debug_stop true
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        val debugMinutes = intent?.getIntExtra("debug_start_minutes", 0) ?: 0
+        if (debuggable && debugMinutes > 0) Scheduler.start(this, debugMinutes)
+        if (debuggable && intent?.getBooleanExtra("debug_stop", false) == true) Scheduler.stop(this)
+
+        SalliLog.log(
+            this, "APP",
+            "opened v${packageManager.getPackageInfo(packageName, 0).versionName} " +
+                "android=${android.os.Build.VERSION.RELEASE}(api ${android.os.Build.VERSION.SDK_INT}) " +
+                "device=${android.os.Build.MODEL} enabled=${Scheduler.isEnabled(this)} " +
+                "interval=${Scheduler.minutes(this)}min ${SalliLog.state(this)}"
+        )
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -107,6 +129,23 @@ class MainActivity : Activity() {
         row.addView(status)
         root.addView(row, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(20) })
 
+        stats = text("", 12f, soft).apply { setPadding(0, dp(8), 0, 0) }
+        root.addView(stats)
+
+        // Debug tools: the log records everything the app does (see README).
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        fun link(label: String, action: () -> Unit) = text(label, 14f, gold).apply {
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setOnClickListener { action() }
+        }
+        tools.addView(link("Copy log") { copyLog() })
+        tools.addView(link("Share log") { shareLog() })
+        tools.addView(link("Clear log") { clearLog() })
+        root.addView(tools, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(24) })
+
         setContentView(ScrollView(this).apply {
             isFillViewport = true
             addView(root)
@@ -118,6 +157,40 @@ class MainActivity : Activity() {
             override fun afterTextChanged(s: Editable?) { refresh() }
         })
         refresh()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refresh()
+    }
+
+    private fun copyLog() {
+        val log = SalliLog.read(this)
+        if (log.isEmpty()) {
+            Toast.makeText(this, "Log is empty", Toast.LENGTH_SHORT).show()
+            return
+        }
+        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
+            .setPrimaryClip(ClipData.newPlainText("Salli log", log))
+        Toast.makeText(this, "Log copied (${log.lines().size} lines)", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun shareLog() {
+        val log = SalliLog.read(this)
+        if (log.isEmpty()) {
+            Toast.makeText(this, "Log is empty", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, "Salli log")
+            .putExtra(Intent.EXTRA_TEXT, log)
+        startActivity(Intent.createChooser(send, "Share log"))
+    }
+
+    private fun clearLog() {
+        SalliLog.clear(this)
+        Toast.makeText(this, "Log cleared", Toast.LENGTH_SHORT).show()
     }
 
     private fun onToggle() {
@@ -163,11 +236,19 @@ class MainActivity : Activity() {
         }
 
         if (on) {
-            status.text = "Running · every $running min"
+            val next = Scheduler.nextAt(this)
+            status.text = "Running · every $running min" +
+                if (next > 0) "\nNext chime ≈ ${SalliLog.clock(next)}" else ""
             dot.background = shape(gold, null, 5)
         } else {
             status.text = "Stopped"
             dot.background = shape(0xFF5C6B8F.toInt(), null, 5)
         }
+
+        val n = Scheduler.chimeCount(this)
+        stats.text = if (n > 0)
+            "Chimes played: $n · avg awake per chime: " +
+                String.format(Locale.US, "%.1f", Scheduler.avgAwakeMs(this) / 1000.0) + " s"
+        else ""
     }
 }

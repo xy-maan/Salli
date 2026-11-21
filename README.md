@@ -18,6 +18,7 @@ Set the interval once and forget about it. The reminder keeps running in the bac
 - **Start / Stop:** one tap to enable or disable.
 - **Live updates:** changing the interval while running applies immediately.
 - **Minimal UI:** dark blue and gold design, a single screen, no ads, no accounts, no internet.
+- **Built-in debug log:** records every alarm, chime and error (see *Debugging and testing*).
 
 ## Battery-first design
 
@@ -59,10 +60,15 @@ No internet, storage, notification, or location permissions are used.
 ## Project structure
 
 ```
+.github/workflows/    # build + unit tests, emulator test
+ci/emulator-test.sh     # script run by the emulator test
+app/src/test/           # unit tests
 app/src/main/
 ├── java/com/example/soundrepeater/
-│   ├── MainActivity.kt     # UI
+│   ├── MainActivity.kt     # UI + log tools
 │   ├── Scheduler.kt        # alarm + saved settings
+│   ├── ScheduleMath.kt     # pure timing math (unit-tested)
+│   ├── SalliLog.kt         # debug log file
 │   ├── ChimeReceiver.kt    # plays the sound, chains the next alarm
 │   └── BootReceiver.kt     # restores the alarm after reboot
 ├── res/
@@ -72,6 +78,65 @@ app/src/main/
 │   └── values/             # colors, theme, strings
 └── AndroidManifest.xml
 ```
+
+## Debugging and testing
+
+**1. The log file (on the phone).** The app writes every event to `salli.log` (private app storage, capped at about 200 KB). In the app use **Copy log** (puts it on the clipboard, ready to paste into a chat), **Share log**, or **Clear log**. The screen also shows the next chime time and the average time the phone stayed awake per chime.
+
+Example lines and what they mean:
+
+```
+[SCHED] START requested=5min using=5min
+[SCHED] SCHEDULED next=14:05:00.000 in=300s interval=5min
+[ALARM] FIRED planned=14:05:00.000 late=212ms interval=5min doze=false powerSave=false batteryOptIgnored=true alarmVol=5/7 ringer=1 bat=83% charging=false bucket=10
+[PLAY] starting focus=granted
+[PLAY] done reason=completed awake=4870ms chimes=1 totalAwake=4870ms avgAwake=4870ms
+```
+
+| Field | Meaning |
+| --- | --- |
+| `late` | How many ms after the planned time the alarm fired. Healthy: under a few seconds. |
+| `interval` | The interval carried by the alarm itself. It must never change by itself. |
+| `doze` / `powerSave` | Whether Android was in deep sleep or battery saver when the alarm fired. |
+| `batteryOptIgnored` | `true` means the app is set to "Don't optimize". |
+| `alarmVol` / `ringer` | Alarm volume (must be above 0) and ringer mode (0 silent, 1 vibrate, 2 normal). |
+| `bucket` | Android standby bucket: 10 active, 20 working set, 30 frequent, 40 rare. |
+| `awake` | Milliseconds the app kept the phone awake for this chime (should be about the clip length). |
+| `[PLAY] ERROR / EXCEPTION` | The sound failed to play, with the reason. |
+| `[BOOT]` | The reminder was restored after a restart or an app update. |
+
+**2. Unit tests (automatic, every push).** `ScheduleMathTest` checks the timing arithmetic: no drift over 1000 chimes, missed chimes after a power-off, clamping of silly values, never scheduling in the past. They run in the `unit-tests` job of the *Build APK* workflow, a separate job, so a failing test never blocks the APK. The report is attached to the run as `unit-test-report`.
+
+**3. Emulator test (real alarms, manual).** Actions tab, then *Emulator test*, then *Run workflow*. It installs the debug APK on an Android emulator and runs about 8 minutes of real alarms at a 1-minute interval:
+
+| Phase | Checks |
+| --- | --- |
+| 1 | Chimes keep coming after the app is closed and its process killed |
+| 2 | Chimes keep coming in forced deep Doze, with timing within 20 s |
+| every chime | The interval is exactly the chosen one |
+| battery | Awake time per chime is bounded, no service is running, no wake lock is held between chimes |
+| 3 | Pressing Stop really stops the chimes |
+
+The result appears on the run page and the full log is attached as `emulator-test-output`. The emulator test is still a simulation: it cannot reproduce Samsung's own battery manager, so keep using the in-app log on the real phone.
+
+The activity also accepts two test hooks in debug builds only: `--ei debug_start_minutes N` and `--ez debug_stop true`.
+
+## Battery audit
+
+Checked in the code and the manifest:
+
+| Check | Result |
+| --- | --- |
+| Services declared | **None** |
+| Foreground service, notification, JobScheduler, WorkManager, timers, threads, polling loops | **None** |
+| Code that runs between chimes | **None**; the only trigger is one system alarm at a time |
+| Wake lock | Only during playback, with a hard 9-second cutoff; released on completion, error or exception |
+| Audio player | Created per chime, released right after |
+| Boot receiver | Runs once per restart or app update |
+| Logging | A few small appends per chime; no background work |
+| Permissions | Boot, exact alarm, wake lock only; no internet, location or storage |
+
+Rough cost: the phone is awake for about as long as the clip plays, plus a fraction of a second. With a roughly 5-second chime that is about 24 minutes of CPU wake time per day at 5-minute intervals, 12 minutes at 10, and 8 minutes at 15. A 1-minute interval is for testing only. The real value is measured by the app itself: see *avg awake per chime* on the main screen and `awake=` in the log. After a day of use, check Settings, then Battery, to see Salli's share.
 
 ## Known limitations
 
