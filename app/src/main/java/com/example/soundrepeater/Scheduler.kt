@@ -11,7 +11,11 @@ object Scheduler {
     const val MIN_MINUTES = ScheduleMath.MIN_MINUTES
     const val MAX_MINUTES = ScheduleMath.MAX_MINUTES
 
-    private fun prefs(c: Context) = c.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private fun prefs(c: Context) = Storage.ctx(c).getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    private fun bootCount(c: Context): Int = try {
+        android.provider.Settings.Global.getInt(c.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)
+    } catch (_: Exception) { -1 }
 
     fun isEnabled(c: Context) = prefs(c).getBoolean("enabled", false)
     fun minutes(c: Context) = prefs(c).getInt("minutes", 5)
@@ -41,11 +45,21 @@ object Scheduler {
         (c.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pending(c, 0, 0))
     }
 
-    /** After a reboot or update: start counting again with the saved interval. */
-    fun resume(c: Context) {
+    /**
+     * After a restart or an app update: start counting again with the saved interval.
+     * [skipIfArmed]: a restart sends two broadcasts (before and after the PIN); the second
+     * one must not restart the timer if the first one already armed the alarm.
+     */
+    fun resume(c: Context, skipIfArmed: Boolean) {
         val m = ScheduleMath.clamp(minutes(c))
+        val now = System.currentTimeMillis()
+        val boot = bootCount(c)
+        if (skipIfArmed && boot != -1 && prefs(c).getInt("armed_boot", -2) == boot && nextAt(c) > now) {
+            SalliLog.log(c, "SCHED", "RESUME skipped, already armed for ${SalliLog.time(nextAt(c))}")
+            return
+        }
         SalliLog.log(c, "SCHED", "RESUME interval=${m}min")
-        schedule(c, m, System.currentTimeMillis() + m * 60_000L)
+        schedule(c, m, now + m * 60_000L)
     }
 
     /** After a chime: next time = previous planned time + interval (no drift). */
@@ -76,7 +90,7 @@ object Scheduler {
             c, 1, Intent(c, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
         )
         am.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), pending(c, minutes, at))
-        prefs(c).edit().putLong("next_at", at).apply()
+        prefs(c).edit().putLong("next_at", at).putInt("armed_boot", bootCount(c)).apply()
         SalliLog.log(
             c, "SCHED",
             "SCHEDULED next=${SalliLog.time(at)} in=${(at - System.currentTimeMillis()) / 1000}s interval=${minutes}min"

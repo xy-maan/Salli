@@ -9,6 +9,10 @@ class BootReceiver : BroadcastReceiver() {
         val app = context.applicationContext
         val enabled = Scheduler.isEnabled(app)
         SalliLog.log(app, "BOOT", "received ${intent.action} enabled=$enabled")
-        if (enabled) Scheduler.resume(app)
+        if (!enabled) return
+        // BOOT_COMPLETED comes after the PIN and may follow LOCKED_BOOT_COMPLETED: don't restart
+        // the timer twice. After an app update the old alarm is gone, so always re-arm then.
+        val second = intent.action == Intent.ACTION_BOOT_COMPLETED
+        Scheduler.resume(app, skipIfArmed = second)
     }
 }

@@ -21,7 +21,7 @@ object SalliLog {
     private const val MAX_BYTES = 200_000L
     private val lock = Any()
 
-    fun file(c: Context) = File(c.applicationContext.filesDir, FILE)
+    fun file(c: Context) = File(Storage.ctx(c).filesDir, FILE)
 
     fun log(c: Context, tag: String, msg: String) {
         try {

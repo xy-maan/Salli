@@ -14,7 +14,7 @@ Set the interval once and forget about it. The reminder keeps running in the bac
 
 - **One simple job:** play a sound every X minutes (5, 10, 15, 30, 60, or any custom value).
 - **Fixed built-in sound:** no sound picker and no dependence on the phone's ringtone.
-- **Survives restarts:** after a reboot or app update, the reminder resumes automatically if it was enabled.
+- **Survives restarts:** after a reboot or app update, the reminder resumes automatically if it was enabled, even before you type the PIN (Direct Boot). The first chime comes one full interval after the phone finishes booting.
 - **Start / Stop:** one tap to enable or disable.
 - **Live updates:** changing the interval while running applies immediately.
 - **Minimal UI:** dark blue and gold design, a single screen, no ads, no accounts, no internet.
@@ -69,6 +69,7 @@ app/src/main/
 │   ├── Scheduler.kt        # alarm + saved settings
 │   ├── ScheduleMath.kt     # pure timing math (unit-tested)
 │   ├── SalliLog.kt         # debug log file
+│   ├── Storage.kt          # settings/log storage readable before the first unlock
 │   ├── ChimeReceiver.kt    # plays the sound, chains the next alarm
 │   └── BootReceiver.kt     # restores the alarm after reboot
 ├── res/
@@ -103,11 +104,11 @@ Example lines and what they mean:
 | `bucket` | Android standby bucket: 10 active, 20 working set, 30 frequent, 40 rare. |
 | `awake` | Milliseconds the app kept the phone awake for this chime (should be about the clip length). |
 | `[PLAY] ERROR / EXCEPTION` | The sound failed to play, with the reason. |
-| `[BOOT]` | The reminder was restored after a restart or an app update. |
+| `[BOOT]` | The reminder was restored after a restart (`LOCKED_BOOT_COMPLETED` = before the PIN, `BOOT_COMPLETED` = after it) or an app update. |
 
 **2. Unit tests (automatic, every push).** `ScheduleMathTest` checks the timing arithmetic: no drift over 1000 chimes, missed chimes after a power-off, clamping of silly values, never scheduling in the past. They run in the `unit-tests` job of the *Build APK* workflow, a separate job, so a failing test never blocks the APK. The report is attached to the run as `unit-test-report`.
 
-**3. Emulator test (real alarms, manual).** Actions tab, then *Emulator test*, then *Run workflow*. It installs the debug APK on an Android emulator and runs about 8 minutes of real alarms at a 1-minute interval:
+**3. Emulator test (real alarms, manual).** Actions tab, then *Emulator test*, then *Run workflow*. It installs the debug APK on an Android emulator and runs about 10 minutes of real alarms at a 1-minute interval:
 
 | Phase | Checks |
 | --- | --- |

@@ -10,7 +10,7 @@ FAIL=0
 say() { echo "$*" | tee -a "$OUT/summary.txt"; }
 ok()  { say "PASS  $*"; }
 bad() { say "FAIL  $*"; FAIL=1; }
-getlog() { adb exec-out run-as "$PKG" cat files/salli.log 2>/dev/null | tr -d '\r'; }
+getlog() { adb exec-out run-as "$PKG" cat /data/user_de/0/$PKG/files/salli.log 2>/dev/null | tr -d '\r'; }
 fired()  { getlog | grep -c "\[ALARM\] FIRED"; }
 
 say "== Salli emulator test $(date -u +%FT%TZ) =="
@@ -75,6 +75,22 @@ n3=$(fired); n3=${n3:-0}
 sleep 130
 n4=$(fired); n4=${n4:-0}
 if [ "$n4" -eq "$n3" ]; then ok "stop: no chimes after pressing Stop"; else bad "stop: $((n4 - n3)) chimes after Stop"; fi
+
+# ---- Phase 4: a restart restores the reminder without opening the app --------------
+adb shell am start -n "$PKG/.MainActivity" --ei debug_start_minutes 1 >/dev/null
+sleep 5
+b0=$(getlog | grep -c "\[BOOT\]"); n5=$(fired)
+adb reboot
+adb wait-for-device
+for i in $(seq 1 60); do
+  [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && break
+  sleep 5
+done
+sleep 100
+b1=$(getlog | grep -c "\[BOOT\]"); n6=$(fired)
+if [ "$b1" -gt "$b0" ]; then ok "phase 4: boot broadcast received after restart"; else bad "phase 4: no boot broadcast after restart"; fi
+if [ "$n6" -gt "$n5" ]; then ok "phase 4: chime played after restart without opening the app"; else bad "phase 4: no chime after restart"; fi
+adb shell am start -n "$PKG/.MainActivity" --ez debug_stop true >/dev/null
 
 getlog > "$OUT/salli.log"
 say "== done: $([ $FAIL -eq 0 ] && echo ALL PASSED || echo SOME FAILED) =="

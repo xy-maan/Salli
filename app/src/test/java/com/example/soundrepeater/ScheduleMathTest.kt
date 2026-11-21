@@ -28,8 +28,8 @@ class ScheduleMathTest {
         val planned = 1_000_000L
         val now = planned + 23 * min + 10_000 // phone was off for ~23 minutes, interval 5
         val next = ScheduleMath.nextAfter(planned, now, 5)
-        assertTrue(next > now)
-        assertTrue(next - now <= 5 * min)
+        assertTrue(next - now >= 5 * min / 2)
+        assertTrue(next - now < 5 * min * 3 / 2)
         assertEquals(0L, (next - planned) % (5 * min))
     }
 
@@ -68,5 +68,26 @@ class ScheduleMathTest {
         }
         // After 1000 chimes the schedule must be exactly 1000 intervals later: zero drift.
         assertEquals(start + 1000 * 7 * min, planned)
+    }
+
+    @Test
+    fun veryLateAlarmDoesNotCauseAQuickDoubleChime() {
+        // Real case from the phone log: 1-minute interval, alarm fired 51.5 s late.
+        val planned = 1_000_000L
+        val now = planned + 51_494
+        val next = ScheduleMath.nextAfter(planned, now, 1)
+        assertTrue(next - now >= 30_000)       // not 8 seconds later
+        assertEquals(0L, (next - planned) % min) // still on the original grid
+    }
+
+    @Test
+    fun nextChimeIsNeverCloserThanHalfAnInterval() {
+        val rnd = Random(99)
+        repeat(5000) {
+            val minutes = 1 + rnd.nextInt(30)
+            val planned = 1_000_000L + rnd.nextInt(1_000_000)
+            val now = planned + rnd.nextInt(3 * minutes * 60_000)
+            assertTrue(ScheduleMath.nextAfter(planned, now, minutes) - now >= minutes * 60_000L / 2)
+        }
     }
 }
