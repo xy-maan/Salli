@@ -16,6 +16,7 @@ Set the interval once and forget about it. The reminder keeps running in the bac
 - **Fixed built-in sound:** no sound picker and no dependence on the phone's ringtone.
 - **Survives restarts:** after a reboot or app update, the reminder resumes automatically if it was enabled, even before you type the PIN (Direct Boot). The first chime comes one full interval after the phone finishes booting.
 - **Start / Stop:** one tap to enable or disable.
+- **Silent-mode switch:** choose whether chimes play when the phone is on silent or vibrate. When off, the schedule keeps running, so the next audible chime lands on the original timing (started at 10:10:10 every minute, back on sound at 10:35:34, next chime at 10:36:10).
 - **Live updates:** changing the interval while running applies immediately.
 - **Minimal UI:** dark blue and gold design, a single screen, no ads, no accounts, no internet.
 - **Built-in debug log:** records every alarm, chime and error (see *Debugging and testing*).
@@ -104,6 +105,8 @@ Example lines and what they mean:
 | `bucket` | Android standby bucket: 10 active, 20 working set, 30 frequent, 40 rare. |
 | `awake` | Milliseconds the app kept the phone awake for this chime (should be about the clip length). |
 | `[PLAY] ERROR / EXCEPTION` | The sound failed to play, with the reason. |
+| `[PLAY] SKIPPED` | The phone was silent/vibrate and the silent-mode switch was off. |
+| `playInSilent` | State of the silent-mode switch when the alarm fired. |
 | `[BOOT]` | The reminder was restored after a restart (`LOCKED_BOOT_COMPLETED` = before the PIN, `BOOT_COMPLETED` = after it) or an app update. |
 
 **2. Unit tests (automatic, every push).** `ScheduleMathTest` checks the timing arithmetic: no drift over 1000 chimes, missed chimes after a power-off, clamping of silly values, never scheduling in the past. They run in the `unit-tests` job of the *Build APK* workflow, a separate job, so a failing test never blocks the APK. The report is attached to the run as `unit-test-report`.
@@ -131,10 +134,11 @@ Checked in the code and the manifest:
 | Services declared | **None** |
 | Foreground service, notification, JobScheduler, WorkManager, timers, threads, polling loops | **None** |
 | Code that runs between chimes | **None**; the only trigger is one system alarm at a time |
-| Wake lock | Only during playback, with a hard 9-second cutoff; released on completion, error or exception |
+| Wake lock | Only during playback, with a hard 8-second cutoff; released on completion, error or exception |
 | Audio player | Created per chime, released right after |
 | Boot receiver | Runs once per restart or app update |
 | Logging | A few small appends per chime; no background work |
+| Skipped chimes (silent mode, switch off) | The alarm still fires, but nothing plays and no wake lock is taken, so it costs a few milliseconds |
 | Permissions | Boot, exact alarm, wake lock only; no internet, location or storage |
 
 Rough cost: the phone is awake for about as long as the clip plays, plus a fraction of a second. With a roughly 5-second chime that is about 24 minutes of CPU wake time per day at 5-minute intervals, 12 minutes at 10, and 8 minutes at 15. A 1-minute interval is for testing only. The real value is measured by the app itself: see *avg awake per chime* on the main screen and `awake=` in the log. After a day of use, check Settings, then Battery, to see Salli's share.
@@ -144,7 +148,7 @@ Rough cost: the phone is awake for about as long as the clip plays, plus a fract
 - If the app is **force-stopped** from system settings, Android cancels its alarms until the app is opened again. A normal swipe-away from recents is fine.
 - Some manufacturers (Xiaomi, Huawei, Oppo, Samsung) restrict background apps aggressively. If chimes stop, set the app's battery mode to **Unrestricted**.
 - The sound plays on the **media volume** and follows silent mode.
-- The clip should be shorter than about 9 seconds.
+- The clip should be shorter than about 8 seconds.
 
 ## License
 

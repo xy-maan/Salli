@@ -5,6 +5,9 @@ object ScheduleMath {
     const val MIN_MINUTES = 1
     const val MAX_MINUTES = 1440
 
+    /** Should this chime make a sound? Silent/vibrate only blocks it when the user chose so. */
+    fun shouldPlay(playInSilent: Boolean, ringerIsNormal: Boolean): Boolean = playInSilent || ringerIsNormal
+
     fun clamp(minutes: Int): Int = minutes.coerceIn(MIN_MINUTES, MAX_MINUTES)
 
     /**

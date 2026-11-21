@@ -21,10 +21,21 @@ object Scheduler {
     fun minutes(c: Context) = prefs(c).getInt("minutes", 5)
     fun nextAt(c: Context) = prefs(c).getLong("next_at", 0L)
 
+    /** When false, chimes stay on schedule but stay quiet while the phone is silent/vibrate. */
+    fun playInSilent(c: Context) = prefs(c).getBoolean("play_in_silent", true)
+    fun setPlayInSilent(c: Context, value: Boolean) {
+        prefs(c).edit().putBoolean("play_in_silent", value).commit()
+        SalliLog.log(c, "APP", "play-in-silent set to $value")
+    }
+
     // The interval and the planned time are carried inside the alarm itself,
     // so every chime re-arms the next one with exactly the same interval.
     private fun pending(c: Context, minutes: Int, at: Long): PendingIntent {
+        // FOREGROUND flag: the chime is delivered through Android's fast broadcast queue.
+        // Without it, right after a restart it waits behind the queue of BOOT_COMPLETED
+        // broadcasts of every app on the phone, which delayed chimes by minutes.
         val i = Intent(c, ChimeReceiver::class.java)
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             .putExtra(EXTRA_MINUTES, minutes)
             .putExtra(EXTRA_AT, at)
         return PendingIntent.getBroadcast(
@@ -54,8 +65,8 @@ object Scheduler {
         val m = ScheduleMath.clamp(minutes(c))
         val now = System.currentTimeMillis()
         val boot = bootCount(c)
-        if (skipIfArmed && boot != -1 && prefs(c).getInt("armed_boot", -2) == boot && nextAt(c) > now) {
-            SalliLog.log(c, "SCHED", "RESUME skipped, already armed for ${SalliLog.time(nextAt(c))}")
+        if (skipIfArmed && boot != -1 && prefs(c).getInt("armed_boot", -2) == boot) {
+            SalliLog.log(c, "SCHED", "RESUME skipped, already armed in this boot")
             return
         }
         SalliLog.log(c, "SCHED", "RESUME interval=${m}min")

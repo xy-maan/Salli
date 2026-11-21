@@ -25,13 +25,23 @@ class ChimeReceiver : BroadcastReceiver() {
         val planned = intent.getLongExtra(Scheduler.EXTRA_AT, 0L)
         val minutes = intent.getIntExtra(Scheduler.EXTRA_MINUTES, Scheduler.minutes(app))
         val late = if (planned > 0) System.currentTimeMillis() - planned else -1L
+        val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val playInSilent = Scheduler.playInSilent(app)
         SalliLog.log(
             app, "ALARM",
-            "FIRED planned=${SalliLog.time(planned)} late=${late}ms interval=${minutes}min ${SalliLog.state(app)}"
+            "FIRED planned=${SalliLog.time(planned)} late=${late}ms interval=${minutes}min " +
+                "playInSilent=$playInSilent ${SalliLog.state(app)}"
         )
 
         // Schedule the next one first, using the interval stored in this very alarm.
         Scheduler.scheduleAfter(app, minutes, planned)
+
+        // Silent/vibrate and the option is off: stay on schedule, just don't make a sound.
+        val ringerNormal = audio.ringerMode == AudioManager.RINGER_MODE_NORMAL
+        if (!ScheduleMath.shouldPlay(playInSilent, ringerNormal)) {
+            SalliLog.log(app, "PLAY", "SKIPPED phone is silent/vibrate (ringer=${audio.ringerMode}) and play-in-silent is OFF")
+            return
+        }
 
         val resId = app.resources.getIdentifier("chime", "raw", app.packageName)
         if (resId == 0) {
@@ -41,7 +51,6 @@ class ChimeReceiver : BroadcastReceiver() {
 
         val pending = goAsync()
         val handler = Handler(Looper.getMainLooper())
-        val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val attrs = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -80,7 +89,7 @@ class ChimeReceiver : BroadcastReceiver() {
             val focusResult = audio.requestAudioFocus(focus)
             SalliLog.log(app, "PLAY", "starting focus=${if (focusResult == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "granted" else "denied($focusResult)"}")
             mp.start()
-            handler.postDelayed({ finish("timeout9s") }, 9000) // safety cutoff
+            handler.postDelayed({ finish("timeout8s") }, 8000) // safety cutoff (foreground broadcasts must end within 10 s)
         } catch (e: Exception) {
             SalliLog.log(app, "PLAY", "EXCEPTION ${e.javaClass.simpleName}: ${e.message}")
             finish("exception")

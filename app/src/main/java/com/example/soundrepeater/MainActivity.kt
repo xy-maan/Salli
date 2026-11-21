@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -112,6 +113,23 @@ class MainActivity : Activity() {
             })
         }
         box.addView(chips, LinearLayout.LayoutParams(-1, -2))
+
+        val silentSwitch = Switch(this).apply {
+            text = "Play in silent / vibrate mode"
+            textSize = 15f
+            setTextColor(gold)
+            isChecked = Scheduler.playInSilent(this@MainActivity)
+            val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+            thumbTintList = ColorStateList(states, intArrayOf(gold, 0xFF8A97B8.toInt()))
+            trackTintList = ColorStateList(states, intArrayOf(0x66E6B84A, 0x558A97B8))
+            setOnCheckedChangeListener { _, checked -> Scheduler.setPlayInSilent(this@MainActivity, checked) }
+        }
+        box.addView(silentSwitch, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
+        box.addView(
+            text("When off, chimes stay on schedule but are skipped until the phone is back on sound.", 12f, soft)
+                .apply { gravity = Gravity.START; setPadding(0, dp(4), 0, 0) },
+            LinearLayout.LayoutParams(-1, -2)
+        )
         root.addView(box, LinearLayout.LayoutParams(-1, -2))
 
         toggle = Button(this).apply {

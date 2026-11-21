@@ -52,7 +52,7 @@ if [ "$bad_iv" -eq 0 ]; then ok "interval: every chime used exactly 1 min"; else
 # ---- Battery checks ----------------------------------------------------------------
 maxawake=$(grep "\[PLAY\] done" "$OUT/salli.log" | sed -n 's/.*awake=\([0-9]*\)ms.*/\1/p' | sort -n | tail -1)
 maxawake=${maxawake:-0}
-if [ "$maxawake" -lt 9500 ]; then ok "battery: awake at most ${maxawake} ms per chime (bounded by the 9 s cutoff)"; else bad "battery: awake ${maxawake} ms for one chime"; fi
+if [ "$maxawake" -lt 8500 ]; then ok "battery: awake at most ${maxawake} ms per chime (bounded by the 8 s cutoff)"; else bad "battery: awake ${maxawake} ms for one chime"; fi
 
 adb shell dumpsys activity services "$PKG" > "$OUT/services.txt" 2>&1
 if grep -q "ServiceRecord" "$OUT/services.txt"; then bad "battery: app has a running service"; else ok "battery: no service running"; fi

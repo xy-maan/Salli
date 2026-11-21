@@ -1,6 +1,7 @@
 package com.example.soundrepeater
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Random
@@ -89,5 +90,26 @@ class ScheduleMathTest {
             val now = planned + rnd.nextInt(3 * minutes * 60_000)
             assertTrue(ScheduleMath.nextAfter(planned, now, minutes) - now >= minutes * 60_000L / 2)
         }
+    }
+
+    @Test
+    fun silentRuleOnlyBlocksWhenTheOptionIsOff() {
+        assertTrue(ScheduleMath.shouldPlay(playInSilent = true, ringerIsNormal = true))
+        assertTrue(ScheduleMath.shouldPlay(playInSilent = true, ringerIsNormal = false))
+        assertTrue(ScheduleMath.shouldPlay(playInSilent = false, ringerIsNormal = true))
+        assertFalse(ScheduleMath.shouldPlay(playInSilent = false, ringerIsNormal = false))
+    }
+
+    @Test
+    fun silentPeriodKeepsTheOriginalSchedule() {
+        // Started at S with a 1-minute interval. The chain keeps ticking (silently) for
+        // 25 minutes; when sound is back at S + 25 min 24 s the next chime is at S + 26 min.
+        val start = 36_610_000L // e.g. 10:10:10
+        var planned = start + min
+        repeat(25) {
+            planned = ScheduleMath.nextAfter(planned, planned + 300, 1)
+        }
+        assertEquals(start + 26 * min, planned)
+        assertTrue(planned > start + 25 * min + 24_000)
     }
 }
